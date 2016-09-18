@@ -1,6 +1,4 @@
 //
-// Copyright (c) 2013 Zvonimir Rakamaric (zvonimir@cs.utah.edu),
-//                    Michael Emmi (michael.emmi@gmail.com)
 // This file is distributed under the MIT License. See LICENSE for details.
 //
 
@@ -10,18 +8,22 @@
 #include "llvm/Support/CommandLine.h"
 
 namespace smack {
-  enum MemMod {
-    flat, twodim
-  };
-  
 class SmackOptions {
 public:
-  static const llvm::cl::opt<MemMod> MemoryModel;
+  static const llvm::cl::list<std::string> EntryPoints;
+
+  static const llvm::cl::opt<bool> Warnings;
+
   static const llvm::cl::opt<bool> MemoryModelDebug;
-  static const llvm::cl::opt<bool> IgnoreMemoryModelAsserts;
   static const llvm::cl::opt<bool> MemoryModelImpls;
-  
+
   static const llvm::cl::opt<bool> SourceLocSymbols;
+  static const llvm::cl::opt<bool> BitPrecise;
+  static const llvm::cl::opt<bool> BitPrecisePointers;
+  static const llvm::cl::opt<bool> NoMemoryRegionSplitting;
+  static const llvm::cl::opt<bool> NoByteAccessInference;
+
+  static bool isEntryPoint(std::string);
 };
 }
 

@@ -1,236 +1,171 @@
 //
-// Copyright (c) 2013 Zvonimir Rakamaric (zvonimir@cs.utah.edu),
-//                    Michael Emmi (michael.emmi@gmail.com)
 // This file is distributed under the MIT License. See LICENSE for details.
 //
 #ifndef SMACKREP_H
 #define SMACKREP_H
 
 #include "smack/BoogieAst.h"
+#include "smack/DSAAliasAnalysis.h"
+#include "smack/Naming.h"
+#include "smack/Regions.h"
 #include "smack/SmackOptions.h"
-#include "llvm/InstVisitor.h"
-#include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/GetElementPtrTypeIterator.h"
+#include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/Regex.h"
 #include <sstream>
-#include <set>
 
 namespace smack {
 
 using llvm::Regex;
 using llvm::SmallVector;
 using llvm::StringRef;
-using namespace std;
-  
+
 class SmackRep {
-public:
-  static const string CURRADDR; // TODO: push this into SmackRepFlatMem
-  static const string ALLOC;
-  static const string BLOCK_LBL;
-  static const string RET_VAR;
-  static const string BOOL_VAR;
-  static const string FLOAT_VAR;
-  static const string PTR_VAR;
-  static const string BOOL_TYPE;
-  static const string FLOAT_TYPE;
-  static const string NULL_VAL;
-
-  static const string ALLOCA;
-  static const string MALLOC;
-  static const string FREE;
-  static const string MEMCPY;
-
-  static const string PTR;
-  static const string OBJ;
-  static const string OFF;
-  static const string PA;
-  
-  static const string FP;
-  
-  static const string TRUNC;
-
-  static const string B2P;
-  static const string I2P;
-  static const string P2I;
-  static const string I2B;
-  static const string B2I;
-
-  static const string FP2SI;
-  static const string FP2UI;
-  static const string SI2FP;
-  static const string UI2FP;
-
-  static const string ADD;
-  static const string SUB;
-  static const string MUL;
-  static const string SDIV;
-  static const string UDIV;
-  static const string SREM;
-  static const string UREM;
-  static const string AND;
-  static const string OR;
-  static const string XOR;
-  static const string LSHR;
-  static const string ASHR;
-  static const string SHL;
-
-  static const string FADD;
-  static const string FSUB;
-  static const string FMUL;
-  static const string FDIV;
-  static const string FREM;
-
-  static const string SGE;
-  static const string UGE;
-  static const string SLE;
-  static const string ULE;
-  static const string SLT;
-  static const string ULT;
-  static const string SGT;
-  static const string UGT;
-  
-  static const string NAND;
-  static const string MAX;
-  static const string MIN;
-  static const string UMAX;
-  static const string UMIN;
-  
-  static const string FFALSE;
-  static const string FOEQ;
-  static const string FOGE;
-  static const string FOGT;
-  static const string FOLE;
-  static const string FOLT;
-  static const string FONE;
-  static const string FORD;
-  static const string FTRUE;
-  static const string FUEQ;
-  static const string FUGE;
-  static const string FUGT;
-  static const string FULE;
-  static const string FULT;
-  static const string FUNE;
-  static const string FUNO;
-  
-  static const string MEM_OP;
-  static const string REC_MEM_OP;
-  static const string MEM_OP_VAL;
-
-  static const Expr* NUL;
-  
-  static const string STATIC_INIT;
-
-  // TODO Make this width a parameter to generate bitvector-based code.
-  static const int width;
-
 protected:
-  static const string ARITHMETIC;
-  static const string MEMORY_DEBUG_SYMBOLS;
-  llvm::AliasAnalysis* aliasAnalysis;
-  vector<const void*> memoryRegions;
   const llvm::DataLayout* targetData;
-  Program* program;
-  
-  vector<const Stmt*> staticInits;
-  
+  Naming& naming;
+  Program& program;
+  Regions& regions;
+  std::vector<std::string> bplGlobals;
+
+  long globalsBottom;
+  long externsBottom;
   unsigned uniqueFpNum;
-  unsigned uniqueUndefNum;
+  unsigned ptrSizeInBits;
 
-protected:
-  SmackRep(llvm::AliasAnalysis* aa)
-    : aliasAnalysis(aa), targetData(aa->getDataLayout()) {
-    uniqueFpNum = 0;
-    uniqueUndefNum = 0;
-  }  
+  std::vector<std::string> initFuncs;
+  std::map<std::string, Decl*> auxDecls;
+
 public:
-  static SmackRep* createRep(llvm::AliasAnalysis* aa);
-  void setProgram(Program* p) { program = p; }
-  
-  bool isSmackName(string n);
-  bool isSmackGeneratedName(string n);
-  bool isIgnore(llvm::Function* f);
-  bool isInt(const llvm::Type* t);
-  bool isInt(const llvm::Value* v);
-  bool isBool(llvm::Type* t);
-  bool isBool(const llvm::Value* v);
-  bool isFloat(llvm::Type* t);
-  bool isFloat(llvm::Value* v);
-  string type(llvm::Type* t);
-  string type(llvm::Value* v);
+  SmackRep(const DataLayout* L, Naming& N, Program& P, Regions& R);
+  Program& getProgram() { return program; }
 
-  unsigned storageSize(llvm::Type* t);
-  unsigned fieldOffset(llvm::StructType* t, unsigned fieldNo);
-  
-  unsigned getRegion(const llvm::Value* v);
-  string memReg(unsigned i);
+private:
 
-  const Expr* mem(const llvm::Value* v);
-  const Expr* mem(unsigned region, const Expr* addr);
-  // const Expr* ptr(const Expr* obj, const Expr* off);
-  // const Expr* obj(const Expr* e);
-  // const Expr* off(const Expr* e);
-  const Expr* i2p(const Expr* e);
-  const Expr* p2i(const Expr* e);
-  const Expr* b2p(const Expr* e);
-  const Expr* i2b(const Expr* e);
-  const Expr* b2i(const Expr* e);
+  unsigned storageSize(llvm::Type* T);
+  unsigned offset(llvm::ArrayType* T, unsigned idx);
+  unsigned offset(llvm::StructType* T, unsigned idx);
 
-  const Expr* fp2si(const Expr* e);
-  const Expr* fp2ui(const Expr* e);
-  const Expr* si2fp(const Expr* e);
-  const Expr* ui2fp(const Expr* e);
-
-  const Expr* pa(const Expr* base, int index, int size);
-  const Expr* pa(const Expr* base, const Expr* index, int size);
+  const Expr* pa(const Expr* base, long long index, unsigned long size);
+  const Expr* pa(const Expr* base, const Expr* index, unsigned long size);
+  const Expr* pa(const Expr* base, unsigned long offset);
   const Expr* pa(const Expr* base, const Expr* index, const Expr* size);
+  const Expr* pa(const Expr* base, const Expr* offset);
 
-  string id(const llvm::Value* v);
-  const Expr* undef();
-  const Expr* lit(const llvm::Value* v);
-  const Expr* lit(unsigned v);
-  const Expr* ptrArith(const llvm::Value* p, vector<llvm::Value*> ps,
-                       vector<llvm::Type*> ts);
-  const Expr* expr(const llvm::Value* v);
-  string getString(const llvm::Value* v);
-  const Expr* op(const llvm::User* v);
-  const Expr* pred(llvm::CmpInst& ci);
-  
-  const Expr* arg(llvm::Function* f, unsigned pos, llvm::Value* v);
-  const Stmt* call(llvm::Function* f, llvm::CallInst& ci);
-  string code(llvm::CallInst& ci);
-  ProcDecl* proc(llvm::Function* f, int n);
-  
-  virtual const Expr* ptr2ref(const Expr* e) = 0;
-  virtual const Expr* ptr2val(const Expr* e) = 0;
-  virtual const Expr* val2ptr(const Expr* e) = 0;
-  virtual const Expr* ref2ptr(const Expr* e) = 0;
-  
-  virtual const Expr* trunc(const Expr* e, llvm::Type* t) = 0;
+  const Expr* bitConversion(const Expr* e, bool src, bool dst);
+  const Expr* pointerToInteger(const Expr* e, unsigned width);
+  const Expr* integerToPointer(const Expr* e, unsigned width);
 
-  virtual vector<Decl*> globalDecl(const llvm::Value* g) = 0;
-  virtual vector<string> getModifies();
+  std::string opName(const std::string& operation, std::initializer_list<const llvm::Type*> types);
+  std::string opName(const std::string& operation, std::initializer_list<unsigned> types);
+
+  const Stmt* store(unsigned R, const Type* T, const Expr* P, const Expr* V);
+
+  const Expr* cast(unsigned opcode, const llvm::Value* v, const llvm::Type* t);
+  const Expr* bop(unsigned opcode, const llvm::Value* lhs, const llvm::Value* rhs, const llvm::Type* t);
+  const Expr* cmp(unsigned predicate, const llvm::Value* lhs, const llvm::Value* rhs);
+
+  std::string procName(const llvm::User& U);
+  std::string procName(const llvm::User& U, llvm::Function* F);
+
+  unsigned getIntSize(const llvm::Value* v);
+  unsigned getIntSize(const llvm::Type* t);
+  unsigned getSize(llvm::Type* t);
+
+  std::string pointerType();
+  std::string intType(unsigned width);
+
   unsigned numElements(const llvm::Constant* v);
-  void addInit(unsigned region, const Expr* addr, const llvm::Constant* val);
-  bool hasStaticInits();
-  Decl* getStaticInit();
-  virtual string getPtrType() = 0;
-  virtual string getPrelude();
 
-  virtual const Expr* declareIsExternal(const Expr* e) = 0;
+  Decl* memcpyProc(std::string type,
+    unsigned length = std::numeric_limits<unsigned>::max());
+  Decl* memsetProc(std::string type,
+    unsigned length = std::numeric_limits<unsigned>::max());
 
-  virtual string memoryModel() = 0;
-  virtual string mallocProc() = 0;
-  virtual string freeProc() = 0;
-  virtual string allocaProc() = 0;
-  virtual string memcpyCall(int dstReg, int srcReg);
-  virtual string memcpyProc(int dstReg, int srcReg) = 0;
-  
+public:
+  const Expr* pointerLit(unsigned v) { return pointerLit((unsigned long) v); }
+  const Expr* pointerLit(unsigned long v);
+  const Expr* pointerLit(long v);
+  const Expr* integerLit(unsigned v, unsigned width) { return integerLit((unsigned long) v, width); }
+  const Expr* integerLit(unsigned long v, unsigned width);
+  const Expr* integerLit(long v, unsigned width);
+
+  std::string type(const llvm::Type* t);
+  std::string type(const llvm::Value* v);
+
+  const Expr* lit(const llvm::Value* v);
+  const Expr* lit(const llvm::Value* v, unsigned flag);
+
+  const Expr* ptrArith(const llvm::GetElementPtrInst* I);
+  const Expr* ptrArith(const llvm::ConstantExpr* CE);
+  const Expr* ptrArith(const llvm::Value* p, std::vector< std::pair<llvm::Value*,llvm::Type*> > args);
+
+  const Expr* expr(const llvm::Value* v);
+
+  const Expr* cast(const llvm::Instruction* I);
+  const Expr* cast(const llvm::ConstantExpr* CE);
+
+  const Expr* bop(const llvm::BinaryOperator* BO);
+  const Expr* bop(const llvm::ConstantExpr* CE);
+
+  const Expr* cmp(const llvm::CmpInst* I);
+  const Expr* cmp(const llvm::ConstantExpr* CE);
+
+  const Expr* arg(llvm::Function* f, unsigned pos, llvm::Value* v);
+  const Stmt* call(llvm::Function* f, const llvm::User& u);
+  std::string code(llvm::CallInst& ci);
+
+  const Stmt* alloca(llvm::AllocaInst& i);
+  const Stmt* memcpy(const llvm::MemCpyInst& msi);
+  const Stmt* memset(const llvm::MemSetInst& msi);
+  const Expr* load(const llvm::Value* P);
+  const Stmt* store(const Value* P, const Value* V);
+  const Stmt* store(const Value* P, const Expr* V);
+
+  const Stmt* valueAnnotation(const CallInst& CI);
+  const Stmt* returnValueAnnotation(const CallInst& CI);
+
+  std::list<ProcDecl*> procedure(Function* F);
+  ProcDecl* procedure(Function* F, CallInst* C);
+
+  // used in Slicing
+  unsigned getElementSize(const llvm::Value* v);
+
+  std::string memReg(unsigned i);
+  std::string memType(unsigned region);
+  std::string memPath(unsigned region);
+
+  std::list< std::pair< std::string, std::string > > memoryMaps() {
+    std::list< std::pair< std::string, std::string > > mms;
+    for (unsigned i=0; i<regions.size(); i++)
+      mms.push_back({memReg(i), memType(i)});
+    return mms;
+  }
+
+  // used in SmackInstGenerator
+  std::string getString(const llvm::Value* v);
+  bool isExternal(const llvm::Value* v);
+  void addBplGlobal(std::string name);
+
+  // used in SmackModuleGenerator
+  std::list<Decl*> globalDecl(const llvm::GlobalValue* g);
+  void addInitFunc(const llvm::Function* f);
+  Decl* getInitFuncs();
+  std::string getPrelude();
+  const Expr* declareIsExternal(const Expr* e);
+
+  std::list<Decl*> auxiliaryDeclarations() {
+    std::list<Decl*> ds;
+    for (auto D : auxDecls)
+      ds.push_back(D.second);
+    return ds;
+  }
 };
+
 }
 
 #endif // SMACKREP_H
-

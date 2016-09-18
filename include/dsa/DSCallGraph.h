@@ -19,7 +19,7 @@
 
 #include <cstddef>
 #include "llvm/ADT/EquivalenceClasses.h"
-#include "llvm/Support/CallSite.h"
+#include "llvm/IR/CallSite.h"
 
 #include <cassert>
 #include <map>
@@ -194,7 +194,7 @@ public:
     List.insert(List.end(), Set.begin(), Set.end());
   }
 
-  void dump();
+  void dump() const;
 
   void assertSCCRoot(const llvm::Function* F) {
     assert(F == SCCs.getLeaderValue(F) && "Not Leader?");

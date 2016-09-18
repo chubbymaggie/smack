@@ -1,122 +1,253 @@
 #! /usr/bin/env python
 
+from os import path
+from multiprocessing.pool import ThreadPool
+import multiprocessing
+import os
+import signal
+import logging
+import yaml
+import psutil
+import argparse
+from os import path
 import subprocess
 import re
+import glob
 import time
+import sys
 
-# list of regression tests with the expected outputs
-tests = [
-  ('simple',             r'1 verified, 0 errors?', 2),
-  ('simple_fail',        r'0 verified, 1 errors?', 2),
-  ('simple_pre',         r'1 verified, 0 errors?', 2),
-  ('simple_pre_fail',    r'0 verified, 1 errors?', 2),
-  ('simple_pre1',        r'1 verified, 0 errors?', 2),
-  ('simple_pre1_fail',   r'0 verified, 1 errors?', 2),
-  ('simple_pre2',        r'1 verified, 0 errors?', 2),
-  ('simple_pre2_fail',   r'0 verified, 1 errors?', 2),
-  ('simple_pre3',        r'1 verified, 0 errors?', 2),
-  ('simple_pre3_fail',   r'0 verified, 1 errors?', 2),
-#  ('simple_double_free', r'0 verified, 1 errors?', 2),
-  ('pointers',           r'1 verified, 0 errors?', 2),
-  ('pointers_fail',      r'0 verified, 1 errors?', 2),
-  ('pointers1',          r'1 verified, 0 errors?', 2),
-  ('pointers1_fail',     r'0 verified, 1 errors?', 2),
-  ('pointers2',          r'1 verified, 0 errors?', 2),
-  ('pointers2_fail',     r'0 verified, 1 errors?', 2),
-  ('pointers3',          r'1 verified, 0 errors?', 2),
-  ('pointers3_fail',     r'0 verified, 1 errors?', 2),
-  ('globals',            r'1 verified, 0 errors?', 2),
-  ('globals_fail',       r'0 verified, 1 errors?', 2),
-  ('loop',               r'1 verified, 0 errors?', 11),
-  ('loop_fail',          r'0 verified, 1 errors?', 11),
-  ('loop1',              r'1 verified, 0 errors?', 11),
-  ('loop1_fail',         r'0 verified, 1 errors?', 11),
-  ('nondet',             r'1 verified, 0 errors?', 2),
-  ('printfs',            r'1 verified, 0 errors?', 2),
-  ('extern_func',        r'1 verified, 0 errors?', 2),
-  ('return_label',       r'1 verified, 0 errors?', 2),
-  ('struct_cast',        r'1 verified, 0 errors?', 2),
-  ('struct_cast_fail',   r'0 verified, 1 errors?', 2),
-  ('struct_cast1',       r'1 verified, 0 errors?', 2),
-  ('struct_cast1_fail',  r'0 verified, 1 errors?', 2),
-  ('nested_struct',      r'1 verified, 0 errors?', 2),
-  ('nested_struct_fail', r'0 verified, 1 errors?', 2),
-  ('nested_struct1',     r'1 verified, 0 errors?', 2),
-  ('nested_struct1_fail',r'0 verified, 1 errors?', 2),
-  ('nested_struct2',     r'1 verified, 0 errors?', 2),
-  ('nested_struct2_fail',r'0 verified, 1 errors?', 2),
-  ('struct_assign',      r'1 verified, 0 errors?', 2),
-  ('struct_assign_fail', r'0 verified, 1 errors?', 2),
-  ('func_ptr',           r'1 verified, 0 errors?', 2),
-  ('func_ptr_fail',      r'0 verified, 1 errors?', 2),
-  ('func_ptr1',          r'1 verified, 0 errors?', 2),
-  ('func_ptr1_fail',     r'0 verified, 1 errors?', 2),
-  ('array',              r'1 verified, 0 errors?', 2),
-  ('array1',             r'1 verified, 0 errors?', 2),
-  ('array1_fail',        r'0 verified, 1 errors?', 2),
-  ('array2',             r'1 verified, 0 errors?', 11),
-  ('array2_fail',        r'0 verified, 1 errors?', 11),
-  ('array3',             r'1 verified, 0 errors?', 11),
-  ('array3_fail',        r'0 verified, 1 errors?', 11),
-  ('array4',             r'1 verified, 0 errors?', 11),
-  ('array4_fail',        r'0 verified, 1 errors?', 11),
-#  ('array_free',         r'1 verified, 0 errors?', 11),
-#  ('array_free_fail',    r'0 verified, 3 errors?', 11),
-#  ('array_free1',        r'1 verified, 0 errors?', 11),
-#  ('array_free1_fail',   r'0 verified, 4 errors?', 11),
-#  ('array_free2',        r'1 verified, 0 errors?', 11),
-#  ('array_free2_fail',   r'0 verified, 5 errors?', 11),
-  ('lock',               r'1 verified, 0 errors?', 2),
-  ('lock_fail',          r'0 verified, 1 errors?', 2),
-  ('ase_example',        r'1 verified, 0 errors?', 11),
-  ('ase_example_fail',   r'0 verified, 1 errors?', 11),
-  ('two_arrays',         r'1 verified, 0 errors?', 2),
-  ('two_arrays1',        r'1 verified, 0 errors?', 2),
-  ('two_arrays2',        r'1 verified, 0 errors?', 2),
-  ('two_arrays3',        r'1 verified, 0 errors?', 2),
-  ('two_arrays4',        r'1 verified, 0 errors?', 2),
-  ('two_arrays5',        r'1 verified, 0 errors?', 2),
-  ('two_arrays6',        r'1 verified, 0 errors?', 2),
-  ('two_arrays6_fail',   r'0 verified, 1 errors?', 2)
-]
+OVERRIDE_FIELDS = ['verifiers', 'memory', 'time-limit', 'memory-limit', 'skip']
+APPEND_FIELDS = ['flags']
 
-def red(text):
-  return '\033[0;31m' + text + '\033[0m'
-  
-def green(text):
-  return '\033[0;32m' + text + '\033[0m'
+def bold(text):
+  return '\033[1m' + text + '\033[0m'
 
-def runtests():
-  passed = failed = 0
-  for test in tests:
-    
-    for mem in ['flat']:
-    
-      print "{0:>20} {1:>8}:".format(test[0], "(" + mem + ")"),
+def red(text, log_file):
+  if log_file:
+    return text
+  else:
+    return '\033[0;31m' + text + '\033[0m'
 
-      # invoke SMACK
-      t0 = time.time()
-      p = subprocess.Popen(['smack-verify.py', test[0] + '.bc', '--verifier=boogie-inline',
-                            '--unroll=' + str(test[2]), '--mem-mod=' + mem, '-o', test[0] +'.bpl'],
-                            stdout=subprocess.PIPE)
-      
-      smackOutput = p.communicate()[0]
-      elapsed = time.time() - t0
+def green(text, log_file):
+  if log_file:
+    return text
+  else:
+    return '\033[0;32m' + text + '\033[0m'
 
-      # check SMACK output
-      if re.search(test[1], smackOutput):
-        print green('PASSED') + '  [%.2fs]' % round(elapsed, 2)
-        passed += 1
+def get_result(output):
+  if re.search(r'SMACK timed out', output):
+    return 'timeout'
+  elif re.search(r'SMACK found no errors', output):
+    return 'verified'
+  elif re.search(r'SMACK found an error', output):
+    return 'error'
+  else:
+    return 'unknown'
+
+def merge(metadata, yamldata):
+  for key in OVERRIDE_FIELDS:
+    if key in yamldata:
+      metadata[key] = yamldata[key]
+
+  for key in APPEND_FIELDS:
+    if key in yamldata:
+      if key in metadata:
+        metadata[key] += yamldata[key]
       else:
-        print red('FAILED')
-        failed += 1
-  
-  return passed, failed
+        metadata[key] = yamldata[key]
 
-if __name__ == '__main__':
+def metadata(file):
+  m = {}
+  prefix = []
 
-  passed, failed = runtests()
-  
-  print '\nPASSED count: ', passed
-  print 'FAILED count: ', failed
+  for d in path.dirname(file).split('/'):
+    prefix += [d]
+    yaml_file = path.join(*(prefix + ['config.yml']))
+    if path.isfile(yaml_file):
+      with open(yaml_file, "r") as f:
+        data = yaml.safe_load(f)
+        merge(m,data)
 
+  with open(file, "r") as f:
+    for line in f.readlines():
+
+      match = re.search(r'@skip', line)
+      if match:
+        m['skip'] = True
+
+      match = re.search(r'@flag (.*)',line)
+      if match:
+        m['flags'] += [match.group(1).strip()]
+
+      match = re.search(r'@expect (.*)',line)
+      if match:
+        m['expect'] = match.group(1).strip()
+
+  if not m['skip'] and not 'expect' in m:
+    print red("WARNING: @expect MISSING IN %s" % file, None)
+    m['expect'] = 'verified'
+
+  return m
+
+# integer constants
+PASSED = 0; TIMEDOUT = 1; UNKNOWN = 2; FAILED = -1;
+def process_test(cmd, test, memory, verifier, expect, log_file):
+  """
+  This is the worker function for each process. This function process the supplied
+  test and returns a tuple containing  indicating the test results.
+
+  :return: A tuple with the
+  """
+  str_result = "{0:>20}\n".format(test)
+  str_result += "{0:>20} {1:>10}    :".format(memory, verifier)
+
+  t0 = time.time()
+  p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+  out, err  = p.communicate()
+  elapsed = time.time() - t0
+
+  # get the test results
+  result = get_result(out+err)
+  if result == expect:
+    str_result += green('PASSED ', log_file)
+  elif result == 'timeout':
+    str_result += red('TIMEOUT', log_file)
+  elif result == 'unknown':
+    str_result += red('UNKNOWN', log_file)
+  else:
+    str_result += red('FAILED ', log_file)
+
+  str_result += '  [%.2fs]' % round(elapsed, 2)
+  return str_result
+
+passed = failed = timeouts = unknowns = 0
+def tally_result(result):
+  """
+  Tallies the result of each worker. This will only be called by the main thread.
+  """
+  # log the info
+  logging.info(result)
+
+  global passed, failed, timeouts, unknowns
+  if "PASSED" in result:
+    passed += 1
+  elif "FAILED" in result:
+    failed += 1
+  elif "TIMEOUT" in result:
+    timeouts += 1
+  elif "UNKNOWN" in result:
+    unknowns += 1
+
+def main():
+  """
+  Main entry point for the test suite.
+  """
+  t0 = time.time()
+  num_cpus = multiprocessing.cpu_count()
+  mem_total = psutil.virtual_memory().total / (1024 * 1024)
+
+  # configure the CLI
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--exhaustive", help="check all configurations on all examples", action="store_true")
+  parser.add_argument("--all-configs", help="check all configurations per example", action="store_true")
+  parser.add_argument("--all-examples", help="check all examples", action="store_true")
+  parser.add_argument("--threads", action="store", dest="n_threads", default=num_cpus, type=int,
+                      help="execute regressions using the selected number of threads in parallel")
+  parser.add_argument("--log", action="store", dest="log_level", default="DEBUG", type=str,
+                      help="sets the logging level (DEBUG, INFO, WARNING)")
+  parser.add_argument("--output-log", action="store", dest="log_path", type=str,
+                      help="sets the output log path. (std out by default)")
+  args = parser.parse_args()
+
+  if args.exhaustive:
+    args.all_examples = True;
+    args.all_configs = True;
+
+  # configure the logging
+  log_format = ''
+  log_level = logging.DEBUG
+
+  # add more log levels later (if needed)
+  if args.log_level.upper() == "INFO":
+    log_level = logging.INFO
+  elif args.log_level.upper() == "WARNING":
+    log_level = logging.WARNING
+
+  # if the user supplied a log path, write the logs to that file.
+  # otherwise, write the logs to std out.
+  if args.log_path:
+    logging.basicConfig(filename=args.log_path, format=log_format, level=log_level)
+  else:
+    logging.basicConfig(format=log_format, level=log_level)
+
+  logging.debug("Creating Pool with '%d' Workers" % args.n_threads)
+  p = ThreadPool(processes=args.n_threads)
+
+  try:
+    # start the tests
+    logging.info("Running regression tests...")
+
+    # start processing the tests.
+    results = []
+    for test in sorted(glob.glob("./**/*.c")):
+      # get the meta data for this test
+      meta = metadata(test)
+
+      if meta['memory-limit'] > mem_total:
+        continue
+
+      if meta['skip'] == True:
+        continue
+
+      if meta['skip'] != False and not args.all_examples:
+        continue
+
+      # build up the subprocess command
+      cmd = ['smack', test]
+      cmd += ['--time-limit', str(meta['time-limit'])]
+      cmd += meta['flags']
+
+      for memory in meta['memory'][:100 if args.all_configs else 1]:
+        cmd += ['--mem-mod=' + memory]
+
+        for verifier in meta['verifiers'][:100 if args.all_configs else 1]:
+          name = path.splitext(path.basename(test))[0]
+          cmd += ['--verifier=' + verifier]
+          cmd += ['-bc', "%s-%s-%s.bc" % (name, memory, verifier)]
+          cmd += ['-bpl', "%s-%s-%s.bpl" % (name, memory, verifier)]
+          r = p.apply_async(process_test,
+                args=(cmd[:], test, memory, verifier, meta['expect'], args.log_path,),
+                callback=tally_result)
+          results.append(r)
+
+    # keep the main thread active while there are active workers
+    for r in results:
+      r.wait()
+
+  except KeyboardInterrupt:
+    logging.debug("Caught KeyboardInterrupt, terminating workers")
+    p.terminate() # terminate any remaining workers
+    p.join()
+  else:
+    logging.debug("Quitting normally")
+    # close the pool. this prevents any more tasks from being submitted.
+    p.close()
+    p.join() # wait for all workers to finish their tasks
+
+  # log the elapsed time
+  elapsed_time = time.time() - t0
+  logging.info(' ELAPSED TIME [%.2fs]' % round(elapsed_time, 2))
+
+  # log the test results
+  logging.info(' PASSED count: %d' % passed)
+  logging.info(' FAILED count: %d' % failed)
+  logging.info(' TIMEOUT count: %d' % timeouts)
+  logging.info(' UNKNOWN count: %d' % unknowns)
+
+  # if there are any failed tests or tests that timed out, set the system
+  # exit code to a failure status
+  if timeouts > 0 or failed > 0:
+    sys.exit(1)
+
+if __name__=="__main__":
+  main()

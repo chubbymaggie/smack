@@ -1,59 +1,64 @@
-At its core, SMACK is a translator from the [LLVM](http://www.llvm.org)
+[![Build Status](http://kornat.cs.utah.edu:8080/job/smack/badge/icon)](http://kornat.cs.utah.edu:8080/job/smack/)
+
+SMACK is both a *modular software verification toolchain* and a
+*self-contained software verifier*. It can be used to verify the assertions
+in its input programs. In its default mode, assertions are verified up to a
+given bound on loop iterations and recursion depth; it contains experimental
+support for unbounded verification as well. SMACK handles complicated feature
+of the C language, including dynamic memory allocation, pointer arithmetic, and
+bitwise operations.
+
+Under the hood, SMACK is a translator from the [LLVM](http://www.llvm.org)
 compiler's popular intermediate representation (IR) into the
 [Boogie](http://boogie.codeplex.com) intermediate verification language (IVL).
-Sourcing LLVM IR exploits an increasing number of compiler frontends,
-optimizations, and analyses. Targeting Boogie exploits a canonical platform
-which simplifies the implementation of algorithms for verification, model
-checking, and abstract interpretation. The main purpose of SMACK is to decouple
-the implementations of verification algorithms from the details of source
-languages, and enable rapid prototyping on production code.  Our initial
-experience verifying C language programs is encouraging: SMACK is competitive
-in SV-COMP benchmarks, is able to translate large programs (100 KLOC), and is
-used in several verification research prototypes.
+Sourcing LLVM IR exploits an increasing number of compiler front-ends,
+optimizations, and analyses. Currently SMACK only supports the C language via
+the [Clang](http://clang.llvm.org) compiler, though we are working on providing
+support for additional languages. Targeting Boogie exploits a canonical
+platform which simplifies the implementation of algorithms for verification,
+model checking, and abstract interpretation. Currently, SMACK leverages the
+[Boogie](http://boogie.codeplex.com) and [Corral](http://corral.codeplex.com)
+verifiers.
 
-## A Quick Demo
+See below for system requirements, installation, usage, and everything else.
 
-SMACK can verify C programs, such as the following:
+*We are very interested in your experience using SMACK. Please do contact
+[Zvonimir](mailto:zvonimir@cs.utah.edu) or
+[Michael](mailto:michael.emmi@gmail.com) with any possible feedback.*
 
-    // simple.c
-    #include "smack.h"
 
-    int incr(int x) {
-      return x + 1;
-    }
+### Support
 
-    int main(void) {
-      int a;
+* For general questions, first consult the [FAQ](docs/faq.md).
 
-      a = 1;
-      a = incr(a);
-      __SMACK_assert(a == 2);
-      return 0;
-    }
+* If something is otherwise broken or missing, open an [issue](https://github.com/smackers/smack/issues).
 
-To do so, SMACK invokes [Clang](http://clang.llvm.org) to compile `simple.c`
-into LLVM bitcode `simple.bc`:
+* As a last resort, send mail to 
+  [Michael](mailto:michael.emmi@gmail.com), [Zvonimir](mailto:zvonimir@cs.utah.edu), or both.
 
-    clang -c -Wall -emit-llvm -O0 -g -I../../include/smack simple.c -o simple.bc
+* To stay informed about updates, you can either watch SMACK's Github page,
+  or you can join [SMACK's Google Group](http://groups.google.com/group/smack-dev)
+  mailing list.  Even without a Google account, you may join by sending mail to
+  [smack-dev+subscribe@googlegroups.com](mailto:smack-dev+subscribe@googlegroups.com).
 
-then translates the bitcode `simple.bc` to a program in the
-[Boogie](http://boogie.codeplex.com) verification language,
 
-    smackgen.py simple.bc -o simple.bpl
+### Acknowledgements
 
-and finally verifies `simple.bpl` with the [Boogie Verifier](http://boogie.codeplex.com)
+SMACK project is partially supported by NSF award CCF 1346756 and Microsoft
+Research SEIF award. We also rely on University of Utah's
+[Emulab](http://www.emulab.net/) infrastructure for extensive benchmarking of
+SMACK.
 
-    Boogie simple.bpl
 
-concluding that the original program `simple.c` is verified to be correct.
-While SMACK is designed to be a *modular* verifier, for our convenience, this
-whole process has also been wrapped into a single command in SMACK:
+### Table of Contents
 
-    smack-verify.py simple.c -o simple.bpl
-    
-which equally reports that the program `simple.c` is verified.
+1. [System Requirements and Installation](docs/installation.md)
+1. [Running SMACK](docs/running.md)
+1. [Demos](docs/demos.md)
+1. [FAQ](docs/faq.md)
+1. [Inline Boogie Code](docs/boogie-code.md)
+1. [Contribution Guidelines](docs/contributions.md)
+1. [Projects](docs/projects.md)
+1. [Publications](docs/publications.md)
+1. [People](docs/people.md)
 
-## Further Information
-
-For requirements, installation, usage, and whatever else, please consult the
-[SMACK Wiki on Github](https://github.com/smackers/smack/wiki).

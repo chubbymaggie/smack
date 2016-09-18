@@ -56,7 +56,7 @@ bool ArgCast::runOnModule(Module& M) {
     if (I->mayBeOverridden())
       continue;
     // Find all uses of this function
-    for(Value::use_iterator ui = I->use_begin(), ue = I->use_end(); ui != ue; ) {
+    for(Value::user_iterator ui = I->user_begin(), ue = I->user_end(); ui != ue; ) {
       // check if is ever casted to a different function type
       ConstantExpr *CE = dyn_cast<ConstantExpr>(*ui++);
       if(!CE)
@@ -78,8 +78,8 @@ bool ArgCast::runOnModule(Module& M) {
       
       if(FTy->getNumParams() != I->arg_size() && !FTy->isVarArg())
         continue;
-      for(Value::use_iterator uii = CE->use_begin(),
-          uee = CE->use_end(); uii != uee; ++uii) {
+      for(Value::user_iterator uii = CE->user_begin(),
+          uee = CE->user_end(); uii != uee; ++uii) {
         // Find all uses of the casted value, and check if it is 
         // used in a Call Instruction
         if (CallInst* CI = dyn_cast<CallInst>(*uii)) {
@@ -187,7 +187,7 @@ bool ArgCast::runOnModule(Module& M) {
           RetCast = new IntToPtrInst(CINew, CI->getType(), "", CI);
         else {
           // TODO: I'm not sure what right behavior is here, but this case should be handled.
-          assert(0 && "Unexpected type conversion in call!");
+          llvm_unreachable("Unexpected type conversion in call!");
           abort();
         }
         CI->replaceAllUsesWith(RetCast);

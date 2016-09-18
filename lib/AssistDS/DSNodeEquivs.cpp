@@ -12,11 +12,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "DSNodeEquivs"
 #include "assistDS/DSNodeEquivs.h"
 
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Support/InstIterator.h"
+#include "llvm/IR/InstIterator.h"
 #include "llvm/ADT/SmallSet.h"
 
 #include <deque>
@@ -134,7 +135,7 @@ void DSNodeEquivs::equivNodesThroughCallsite(CallInst *CI) {
     // We can't merge through graphs that don't exist.
     if (!TDDS.hasDSGraph(Callee))
       continue;
-    
+
     DSGraph &CalleeGraph = *TDDS.getDSGraph(Callee);
     DSGraph::NodeMapTy NodeMap;
 
@@ -245,17 +246,14 @@ const DSNode *DSNodeEquivs::getMemberForValue(const Value *V) {
     std::deque<const User *> WL;
     SmallSet<const User *, 8> Visited;
 
-    // BEGIN BANDAGE: caught a bug here after upgrade to OSX Mavericks
-    // ORIGINAL: WL.insert(WL.end(), V->use_begin(), V->use_end());
-    for ( llvm::Value::const_use_iterator i = V->use_begin(); i != V->use_end(); ++i )
-      WL.push_back(*i);
-    // END BANDAGE
+    for (auto U : V->users())
+      WL.push_back(U);
 
     do {
       const User *TheUser = WL.front();
       WL.pop_front();
 
-      if (!Visited.insert(TheUser))
+      if (!Visited.insert(TheUser).second)
         continue;
 
       //
@@ -276,7 +274,8 @@ const DSNode *DSNodeEquivs::getMemberForValue(const Value *V) {
         //
         // If this use is of some other nature, look at the users of this use.
         //
-        WL.insert(WL.end(), TheUser->use_begin(), TheUser->use_end());
+        for (auto U : TheUser->users())
+          WL.push_back(U);
       }
     } while (!WL.empty());
   }

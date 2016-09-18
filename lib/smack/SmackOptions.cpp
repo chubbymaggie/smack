@@ -1,6 +1,4 @@
 //
-// Copyright (c) 2013 Zvonimir Rakamaric (zvonimir@cs.utah.edu),
-//                    Michael Emmi (michael.emmi@gmail.com)
 // This file is distributed under the MIT License. See LICENSE for details.
 //
 
@@ -9,21 +7,19 @@
 
 namespace smack {
 
-// Enable memory model to be specified on the command line
-const llvm::cl::opt<MemMod> SmackOptions::MemoryModel(
-  "mem-mod", 
-  llvm::cl::desc("Set the memory model:"),
-  llvm::cl::values(
-    clEnumVal(flat, "flat memory model"),
-    clEnumVal(twodim, "two dimensional memory model"),
-    clEnumValEnd));
+const llvm::cl::list<std::string> SmackOptions::EntryPoints(
+  "entry-points",
+  llvm::cl::ZeroOrMore,
+  llvm::cl::desc("Entry point procedure names"),
+  llvm::cl::value_desc("PROCS")
+);
+
+const llvm::cl::opt<bool> SmackOptions::Warnings(
+  "warnings", llvm::cl::desc("Enable warnings.")
+);
 
 const llvm::cl::opt<bool> SmackOptions::MemoryModelDebug(
   "mem-mod-dbg", llvm::cl::desc("Enable memory model debugging.")
-);
-
-const llvm::cl::opt<bool> SmackOptions::IgnoreMemoryModelAsserts(
-  "no-mem-mod-asserts", llvm::cl::desc("Ignore memory model assertions.")
 );
 
 const llvm::cl::opt<bool> SmackOptions::MemoryModelImpls(
@@ -33,5 +29,28 @@ const llvm::cl::opt<bool> SmackOptions::MemoryModelImpls(
 const llvm::cl::opt<bool> SmackOptions::SourceLocSymbols(
   "source-loc-syms", llvm::cl::desc("Include source locations in generated code.")
 );
+
+const llvm::cl::opt<bool> SmackOptions::BitPrecise(
+  "bit-precise", llvm::cl::desc("Model non-pointer values as bit vectors.")
+);
+
+const llvm::cl::opt<bool> SmackOptions::BitPrecisePointers(
+  "bit-precise-pointers", llvm::cl::desc("Model pointers as bit vectors.")
+);
+
+const llvm::cl::opt<bool> SmackOptions::NoMemoryRegionSplitting(
+  "no-memory-splitting", llvm::cl::desc("Disable splitting memory into regions.")
+);
+
+const llvm::cl::opt<bool> SmackOptions::NoByteAccessInference(
+  "no-byte-access-inference", llvm::cl::desc("Optimize bit-precision with DSA.")
+);
+
+bool SmackOptions::isEntryPoint(std::string name) {
+  for (auto EP : EntryPoints)
+    if (name == EP)
+      return true;
+  return false;
+}
 
 }
